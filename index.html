@@ -435,30 +435,6 @@ Example: Create a simple calculator with buttons for add, subtract, multiply and
         const verifyCodeBtn = document.getElementById('verifyCodeBtn');
         const validPremiumCodes = ['PREMIUM2024', 'AICODE-PRO', 'UNLOCK-PREMIUM'];
 
-        // Initialize storage
-        async function initStorage() {
-            try {
-                const result = await window.storage.get('users-db');
-                if (!result) {
-                    await window.storage.set('users-db', JSON.stringify({}));
-                }
-            } catch (error) {
-                console.log('Initializing new users database');
-                await window.storage.set('users-db', JSON.stringify({}));
-            }
-
-            // Initialize device tracking
-            try {
-                const deviceResult = await window.storage.get('device-accounts');
-                if (!deviceResult) {
-                    await window.storage.set('device-accounts', JSON.stringify([]));
-                }
-            } catch (error) {
-                console.log('Initializing device tracking');
-                await window.storage.set('device-accounts', JSON.stringify([]));
-            }
-        }
-
         // Get or create device ID
         function getDeviceId() {
             let deviceId = localStorage.getItem('deviceId');
@@ -469,24 +445,44 @@ Example: Create a simple calculator with buttons for add, subtract, multiply and
             return deviceId;
         }
 
+        // Get users database from localStorage
+        function getUsersDB() {
+            const db = localStorage.getItem('usersDB');
+            return db ? JSON.parse(db) : {};
+        }
+
+        // Save users database to localStorage
+        function saveUsersDB(users) {
+            localStorage.setItem('usersDB', JSON.stringify(users));
+        }
+
+        // Get device accounts from localStorage
+        function getDeviceAccounts() {
+            const accounts = localStorage.getItem('deviceAccounts');
+            return accounts ? JSON.parse(accounts) : [];
+        }
+
+        // Save device accounts to localStorage
+        function saveDeviceAccounts(accounts) {
+            localStorage.setItem('deviceAccounts', JSON.stringify(accounts));
+        }
+
         // Check if user is logged in on page load
-        window.addEventListener('load', async () => {
-            await initStorage();
-            
+        window.addEventListener('load', () => {
             const savedUser = localStorage.getItem('currentUser');
             if (savedUser) {
                 currentUser = savedUser;
-                await loadUserData();
+                loadUserData();
                 showMainApp();
             }
         });
 
-        loginBtn.addEventListener('click', async () => {
-            await handleLogin();
+        loginBtn.addEventListener('click', () => {
+            handleLogin();
         });
 
-        signupBtn.addEventListener('click', async () => {
-            await handleSignup();
+        signupBtn.addEventListener('click', () => {
+            handleSignup();
         });
 
         logoutBtn.addEventListener('click', () => {
@@ -501,7 +497,7 @@ Example: Create a simple calculator with buttons for add, subtract, multiply and
             loginStatus.textContent = '';
         });
 
-        async function handleLogin() {
+        function handleLogin() {
             const username = loginUsername.value.trim();
             const password = loginPassword.value.trim();
 
@@ -510,25 +506,20 @@ Example: Create a simple calculator with buttons for add, subtract, multiply and
                 return;
             }
 
-            try {
-                const result = await window.storage.get('users-db');
-                const users = JSON.parse(result.value);
+            const users = getUsersDB();
 
-                if (users[username] && users[username].password === password) {
-                    currentUser = username;
-                    localStorage.setItem('currentUser', username);
-                    await loadUserData();
-                    showMainApp();
-                    loginStatus.textContent = '';
-                } else {
-                    loginStatus.textContent = 'Invalid username or password';
-                }
-            } catch (error) {
-                loginStatus.textContent = 'Error logging in. Please try again.';
+            if (users[username] && users[username].password === password) {
+                currentUser = username;
+                localStorage.setItem('currentUser', username);
+                loadUserData();
+                showMainApp();
+                loginStatus.textContent = '';
+            } else {
+                loginStatus.textContent = 'Invalid username or password';
             }
         }
 
-        async function handleSignup() {
+        function handleSignup() {
             const username = loginUsername.value.trim();
             const password = loginPassword.value.trim();
 
@@ -547,87 +538,69 @@ Example: Create a simple calculator with buttons for add, subtract, multiply and
                 return;
             }
 
-            try {
-                const deviceId = getDeviceId();
+            const deviceId = getDeviceId();
+            const deviceAccounts = getDeviceAccounts();
+            
+            if (deviceAccounts.includes(deviceId)) {
+                loginStatus.textContent = 'This device has already created an account. Please login with your existing account.';
+                return;
+            }
+
+            const users = getUsersDB();
+
+            if (users[username]) {
+                loginStatus.textContent = 'Username already exists';
+                return;
+            }
+
+            users[username] = {
+                password: password,
+                generations: 3,
+                isPremium: false,
+                createdAt: new Date().toISOString(),
+                deviceId: deviceId
+            };
+
+            saveUsersDB(users);
+
+            // Mark this device as having created an account
+            deviceAccounts.push(deviceId);
+            saveDeviceAccounts(deviceAccounts);
+
+            currentUser = username;
+            localStorage.setItem('currentUser', username);
+            generations = 3;
+            isPremium = false;
+            showMainApp();
+            loginStatus.textContent = '';
+        }
+
+        function loadUserData() {
+            const users = getUsersDB();
+            
+            if (users[currentUser]) {
+                generations = users[currentUser].generations;
+                isPremium = users[currentUser].isPremium || false;
                 
-                // Check if this device already created an account
-                const deviceResult = await window.storage.get('device-accounts');
-                const deviceAccounts = JSON.parse(deviceResult.value);
+                genCount.textContent = isPremium ? '∞' : generations;
                 
-                if (deviceAccounts.includes(deviceId)) {
-                    loginStatus.textContent = 'This device has already created an account. Please login with your existing account.';
-                    return;
+                if (isPremium) {
+                    premiumBadge.style.display = 'inline-block';
+                    premiumBtn.textContent = 'Premium Active ✓';
+                    premiumBtn.classList.add('premium-active');
+                    premiumTitle.textContent = '🎉 Premium Active!';
+                    premiumDesc.textContent = 'You have unlimited generations. Enjoy!';
                 }
-
-                const result = await window.storage.get('users-db');
-                const users = JSON.parse(result.value);
-
-                if (users[username]) {
-                    loginStatus.textContent = 'Username already exists';
-                    return;
-                }
-
-                users[username] = {
-                    password: password,
-                    generations: 3,
-                    isPremium: false,
-                    createdAt: new Date().toISOString(),
-                    deviceId: deviceId
-                };
-
-                await window.storage.set('users-db', JSON.stringify(users));
-
-                // Mark this device as having created an account
-                deviceAccounts.push(deviceId);
-                await window.storage.set('device-accounts', JSON.stringify(deviceAccounts));
-
-                currentUser = username;
-                localStorage.setItem('currentUser', username);
-                generations = 3;
-                isPremium = false;
-                showMainApp();
-                loginStatus.textContent = '';
-            } catch (error) {
-                loginStatus.textContent = 'Error creating account. Please try again.';
             }
         }
 
-        async function loadUserData() {
-            try {
-                const result = await window.storage.get('users-db');
-                const users = JSON.parse(result.value);
-                
-                if (users[currentUser]) {
-                    generations = users[currentUser].generations;
-                    isPremium = users[currentUser].isPremium || false;
-                    
-                    genCount.textContent = isPremium ? '∞' : generations;
-                    
-                    if (isPremium) {
-                        premiumBadge.style.display = 'inline-block';
-                        premiumBtn.textContent = 'Premium Active ✓';
-                        premiumBtn.classList.add('premium-active');
-                        premiumTitle.textContent = '🎉 Premium Active!';
-                        premiumDesc.textContent = 'You have unlimited generations. Enjoy!';
-                    }
-                }
-            } catch (error) {
-                console.error('Error loading user data:', error);
-            }
-        }
-
-        async function saveUserData() {
-            try {
-                const result = await window.storage.get('users-db');
-                const users = JSON.parse(result.value);
-                
-                if (users[currentUser]) {
-                    users[currentUser].generations = generations;
-                    users[currentUser].isPremium = isPremium;
-                    await window.storage.set('users-db', JSON.stringify(users));
-                }
-            } catch (error) {
-                console.error('Error saving user data:', error);
+        function saveUserData() {
+            const users = getUsersDB();
+            
+            if (users[currentUser]) {
+                users[currentUser].generations = generations;
+                users[currentUser].isPremium = isPremium;
+                saveUsersDB(users);
             }
         }
 
@@ -646,7 +619,7 @@ Example: Create a simple calculator with buttons for add, subtract, multiply and
             premiumModal.classList.remove('active');
         });
 
-        verifyCodeBtn.addEventListener('click', async () => {
+        verifyCodeBtn.addEventListener('click', () => {
             const code = premiumCodeInput.value.trim().toUpperCase();
             
             if (!code) {
@@ -655,7 +628,7 @@ Example: Create a simple calculator with buttons for add, subtract, multiply and
             }
 
             if (validPremiumCodes.includes(code)) {
-                await activatePremium();
+                activatePremium();
                 premiumCodeInput.value = '';
             } else {
                 alert('Invalid premium code. Please check your code and try again.');
@@ -669,7 +642,7 @@ Example: Create a simple calculator with buttons for add, subtract, multiply and
             premiumModal.classList.remove('active');
         });
 
-        async function activatePremium() {
+        function activatePremium() {
             isPremium = true;
             premiumModal.classList.remove('active');
             premiumBadge.style.display = 'inline-block';
@@ -680,7 +653,7 @@ Example: Create a simple calculator with buttons for add, subtract, multiply and
             premiumDesc.textContent = 'You have unlimited generations. Enjoy!';
             showStatus('Premium activated! You now have unlimited generations!', 'success');
             
-            await saveUserData();
+            saveUserData();
         }
 
         generateBtn.addEventListener('click', async () => {
@@ -734,6 +707,7 @@ Example: Create a simple calculator with buttons for add, subtract, multiply and
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
+                        'x-api-key': API_KEY,
                         'anthropic-version': '2023-06-01'
                     },
                     body: JSON.stringify({
@@ -768,7 +742,7 @@ Example: Create a simple calculator with buttons for add, subtract, multiply and
                 if (!isPremium) {
                     generations--;
                     genCount.textContent = generations;
-                    await saveUserData();
+                    saveUserData();
                 }
 
                 requestChangesBtn.style.display = 'block';
